@@ -81,9 +81,9 @@
 (prefer-method unify [LVar Object] [Object LVar])
 
 (defmethod unify [::seq ::seq] [xs ys rel]
-  (->> rel
-       (unify (head xs) (head ys))
-       (unify (tail xs) (tail ys))))
+  (some->> rel
+           (unify (head xs) (head ys))
+           (unify (tail xs) (tail ys))))
 
 (defmethod unify :default [x y rel]
   (if (= x y) rel))
@@ -124,6 +124,13 @@
               (is zs (lcons z zs'))
               (is x z)
               (append xs' ys zs')))))
+
+(defn member [x xs]
+  (any (fresh [xs']
+         (is xs (lcons x xs')))
+       (fresh [x' xs']
+         (all (is xs (lcons x' xs'))
+              (member x xs')))))
 
 (defn return [lvar]
   (fn [a]
