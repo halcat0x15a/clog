@@ -1,6 +1,5 @@
 (ns clog.core
-  (:require [cont.core :refer [shift reset]]
-            [unapply.core :as u]))
+  (:require [cont.core :refer [shift reset]]))
 
 (defprotocol Term
   (objectify [term a]))
@@ -122,20 +121,25 @@
        (fn [~a]
          (concat ~@(map (fn [clause] `(mapcat #((~k %) %) ((reset ~clause list) ~a))) clauses))))))
 
+(defmacro match [e & clauses]
+  (letfn [(unbounds [pattern]
+            (cond (seq? pattern) (mapcat unbounds (next pattern))
+                  (vector? pattern) (mapcat unbounds pattern)
+                  (and (symbol? pattern) (not (contains? &env pattern))) [pattern]))]
+    `(any ~@(map (fn [[pattern result]]
+                   `(fresh [~@(unbounds pattern)]
+                      (all (is ~pattern ~e) ~result)))
+                 (partition 2 clauses)))))
+
 (defn append [xs ys zs]
-  (any (all (is xs ()) (is zs ys))
-       (fresh [x xs' z zs']
-         (all (is xs (lcons x xs'))
-              (is zs (lcons z zs'))
-              (is x z)
-              (append xs' ys zs')))))
+  (match [xs zs]
+    [() ys] succeed
+    [(lcons x xs') (lcons x zs')] (append xs' ys zs')))
 
 (defn member [x xs]
-  (any (fresh [xs']
-         (is xs (lcons x xs')))
-       (fresh [x' xs']
-         (all (is xs (lcons x' xs'))
-              (member x xs')))))
+  (match xs
+    (lcons x _) succeed
+    (lcons _ xs') (member x xs')))
 
 (defn return [lvar]
   (fn [a]
