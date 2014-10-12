@@ -3,25 +3,25 @@
             [unapply.core :as u]))
 
 (defprotocol Term
-  (objectify [term rel]))
+  (objectify [term a]))
 
 (extend-protocol Term
   clojure.lang.ISeq
-  (objectify [seq rel]
-    (map #(objectify % rel) seq))
+  (objectify [seq a]
+    (map #(objectify % a) seq))
   clojure.lang.IPersistentVector
-  (objectify [vec rel]
-    (mapv #(objectify % rel) vec))
+  (objectify [vec a]
+    (mapv #(objectify % a) vec))
   Object
-  (objectify [obj rel] obj)
+  (objectify [obj a] obj)
   nil
-  (objectify [_ rel] nil))
+  (objectify [_ a] nil))
 
 (deftype LVar [name]
   Term
-  (objectify [this rel]
-    (if (contains? rel this)
-      (objectify (get rel this) rel)
+  (objectify [this a]
+    (if (contains? a this)
+      (objectify (get a this) a)
       this))
   Object
   (toString [this]
@@ -52,8 +52,8 @@
   (head [lcons] head)
   (tail [lcons] tail)
   Term
-  (objectify [this rel]
-    (lcons (objectify head rel) (objectify tail rel)))
+  (objectify [this a]
+    (lcons (objectify head a) (objectify tail a)))
   Object
   (toString [x] (str head " . " tail)))
 
@@ -65,51 +65,65 @@
     (LCons. x xs)
     (cons x xs)))
 
+(defn related [a lvar]
+  (->> a
+       (filter #(= (val %) lvar))
+       (mapcat #(related a (key %)))
+       (cons lvar)))
+
+(defn meets? [a lvar obj]
+  (->> (related a lvar)
+       (mapcat #(get a (hash %)))
+       (every? #(% obj))))
+
 (derive clojure.lang.Sequential ::seq)
 (derive LCons ::seq)
 
-(defmulti unify (fn [x y rel] [(type x) (type y)]))
+(defmulti unify (fn [x y a] [(type x) (type y)]))
 
-(defmethod unify [LVar Object] [lvar obj rel]
-  (cond (= lvar obj) rel
-        (contains? rel lvar) (unify (get rel lvar) obj rel)
-        :else (assoc rel lvar obj)))
+(defmethod unify [LVar LVar] [x y a]
+  (cond (= x y) a
+        (contains? a x) (unify (get a x) y a)
+        (contains? a y) (unify x (get a y) a)
+        :else (assoc a x y)))
 
-(defmethod unify [Object LVar] [obj lvar rel]
-  (assoc rel lvar obj))
+(defmethod unify [LVar Object] [lvar obj a]
+  (cond (contains? a lvar) (unify (get a lvar) obj a)
+        (meets? a lvar obj) (assoc a lvar obj)))
+
+(defmethod unify [Object LVar] [obj lvar a]
+  (cond (contains? a lvar) (unify obj (get a lvar) a)
+        (meets? a lvar obj) (assoc a lvar obj)))
 
 (prefer-method unify [LVar Object] [Object LVar])
 
-(defmethod unify [::seq ::seq] [xs ys rel]
-  (some->> rel
+(defmethod unify [::seq ::seq] [xs ys a]
+  (some->> a
            (unify (head xs) (head ys))
            (unify (tail xs) (tail ys))))
 
-(defmethod unify :default [x y rel]
-  (if (= x y) rel))
+(defmethod unify :default [x y a]
+  (if (= x y) a))
 
 (defmacro fresh [syms & exprs]
   `(let [~@(interleave syms (map (fn [sym] `(lvar (quote ~sym))) syms))]
      ~@exprs))
 
-(defn logic [f]
-  (shift k
-    (fn [a]
-      (mapcat #((k %) %) (f a)))))
+(defmacro logic [sym expr]
+  `(shift k#
+     (fn [~sym]
+       (mapcat #((k# %) %) ~expr))))
 
-(def succeed (logic (fn [a] [a])))
+(def succeed (logic a [a]))
 
-(def fail (logic (fn [a])))
+(def fail (logic a nil))
 
 (defn is [x y]
-  (logic
-    (fn [a]
-      (some->> a (unify x y) list))))
+  (logic a (some->> a (unify x y) list)))
 
 (defmacro all [& clauses]
-  `(logic
-     (fn [a#]
-       ((reset ~@clauses list) a#))))
+  `(logic a#
+     ((reset ~@clauses list) a#)))
 
 (defmacro any [& clauses]
   (let [k (gensym), a (gensym)]
@@ -131,6 +145,13 @@
        (fresh [x' xs']
          (all (is xs (lcons x' xs'))
               (member x xs')))))
+
+(defn pred [x c]
+  (let [k (hash x)]
+    (logic a
+      (if-let [cs (get a k)]
+        [(assoc a k (conj cs c))]
+        [(assoc a k #{c})]))))
 
 (defn return [lvar]
   (fn [a]
