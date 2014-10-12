@@ -65,17 +65,6 @@
     (LCons. x xs)
     (cons x xs)))
 
-(defn related [a lvar]
-  (->> a
-       (filter #(= (val %) lvar))
-       (mapcat #(related a (key %)))
-       (cons lvar)))
-
-(defn meets? [a lvar obj]
-  (->> (related a lvar)
-       (mapcat #(get a (hash %)))
-       (every? #(% obj))))
-
 (derive clojure.lang.Sequential ::seq)
 (derive LCons ::seq)
 
@@ -88,12 +77,14 @@
         :else (assoc a x y)))
 
 (defmethod unify [LVar Object] [lvar obj a]
-  (cond (contains? a lvar) (unify (get a lvar) obj a)
-        (meets? a lvar obj) (assoc a lvar obj)))
+  (if (contains? a lvar)
+    (unify (get a lvar) obj a)
+    (assoc a lvar obj)))
 
 (defmethod unify [Object LVar] [obj lvar a]
-  (cond (contains? a lvar) (unify obj (get a lvar) a)
-        (meets? a lvar obj) (assoc a lvar obj)))
+  (if (contains? a lvar)
+    (unify obj (get a lvar) a)
+    (assoc a lvar obj)))
 
 (prefer-method unify [LVar Object] [Object LVar])
 
@@ -145,13 +136,6 @@
        (fresh [x' xs']
          (all (is xs (lcons x' xs'))
               (member x xs')))))
-
-(defn pred [x c]
-  (let [k (hash x)]
-    (logic a
-      (if-let [cs (get a k)]
-        [(assoc a k (conj cs c))]
-        [(assoc a k #{c})]))))
 
 (defn return [lvar]
   (fn [a]
