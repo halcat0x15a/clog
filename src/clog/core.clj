@@ -16,21 +16,18 @@
   nil
   (objectify [_ a] nil))
 
-(deftype LVar [name]
+(defrecord LVar [id]
   Term
   (objectify [this a]
     (if (contains? a this)
       (objectify (get a this) a)
-      this))
-  Object
-  (toString [this]
-    (str name)))
+      this)))
 
 (defn lvar? [x]
   (instance? LVar x))
 
 (defn lvar [name]
-  (LVar. name))
+  (LVar. (gensym name)))
 
 (defprotocol Seq
   (head [seq])
@@ -46,15 +43,13 @@
 
 (declare lcons)
 
-(deftype LCons [head tail]
+(defrecord LCons [head tail]
   Seq
   (head [lcons] head)
   (tail [lcons] tail)
   Term
   (objectify [this a]
-    (lcons (objectify head a) (objectify tail a)))
-  Object
-  (toString [x] (str head " . " tail)))
+    (lcons (objectify head a) (objectify tail a))))
 
 (defn lcons? [x]
   (instance? LCons x))
@@ -111,15 +106,17 @@
 (defn is [x y]
   (logic a (some->> a (unify x y) list)))
 
+(defmacro execute [a & goals]
+  `((reset ~@goals list) ~a))
+
 (defmacro all [& clauses]
-  `(logic a#
-     ((reset ~@clauses list) a#)))
+  `(logic a# (execute a# ~@clauses)))
 
 (defmacro any [& clauses]
   (let [k (gensym), a (gensym)]
     `(shift ~k
        (fn [~a]
-         (concat ~@(map (fn [clause] `(mapcat #((~k %) %) ((reset ~clause list) ~a))) clauses))))))
+         (concat ~@(map (fn [clause] `(mapcat #((~k %) %) (execute ~a ~clause))) clauses))))))
 
 (defmacro match [e & clauses]
   (letfn [(unbounds [pattern]
