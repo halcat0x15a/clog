@@ -116,7 +116,7 @@
   (let [k (gensym), a (gensym)]
     `(shift ~k
        (fn [~a]
-         (concat ~@(map (fn [clause] `(mapcat #((~k %) %) (execute ~a ~clause))) clauses))))))
+         (concat ~@(map (fn [clause] `(lazy-seq (mapcat #((~k %) %) (execute ~a ~clause)))) clauses))))))
 
 (defmacro match [e & clauses]
   (letfn [(unbounds [pattern]

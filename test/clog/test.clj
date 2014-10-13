@@ -12,3 +12,11 @@
   (testing "combination"
     (is (= (run (fresh [a b] (l/append a b [1 2 3 4 5]) (return [a b])))
            [[[] [1 2 3 4 5]] [[1] [2 3 4 5]] [[1 2] [3 4 5]] [[1 2 3] [4 5]] [[1 2 3 4] [5]] [[1 2 3 4 5] []]]))))
+
+(deftest member
+  (testing "enumeration"
+    (is (= (run (fresh [q] (l/member q ['foo 'bar 'baz]) (return q)))
+           ['foo 'bar 'baz])))
+  (testing "construction"
+    (is (= (:head (first (run (fresh [q] (l/member 'foo q) (return q)))))
+           'foo))))
