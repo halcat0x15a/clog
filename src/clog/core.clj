@@ -1,5 +1,6 @@
 (ns clog.core
-  (:require [cont.core :refer [shift reset]]))
+  (:require [cont.core :refer [shift reset]]
+            [stackless.core :as s]))
 
 (defprotocol Term
   (objectify [term a]))
@@ -26,8 +27,10 @@
 (defn lvar? [x]
   (instance? LVar x))
 
-(defn lvar [name]
-  (LVar. (gensym name)))
+(defn lvar
+  ([] (lvar `_#))
+  ([name]
+     (LVar. (gensym name))))
 
 (defprotocol Seq
   (head [seq])
@@ -94,10 +97,13 @@
   `(let [~@(interleave syms (map (fn [sym] `(lvar (quote ~sym))) syms))]
      ~@exprs))
 
+(defn fold [k xs]
+  (s/bind xs (partial reduce (fn [c x] (s/bind c (fn [a] (s/bind ((k x) x) (fn [b] (concat a b)))))) (s/call ()))))
+
 (defmacro logic [sym expr]
   `(shift k#
      (fn [~sym]
-       (mapcat #((k# %) %) ~expr))))
+       (fold k# ~expr))))
 
 (def succeed (logic a [a]))
 
@@ -116,7 +122,12 @@
   (let [k (gensym), a (gensym)]
     `(shift ~k
        (fn [~a]
-         (concat ~@(map (fn [clause] `(lazy-seq (mapcat #((~k %) %) (execute ~a ~clause)))) clauses))))))
+         (s/call ~(reduce (fn [c clause]
+                            `(s/bind ~c (fn [xs#]
+                                          (s/bind (fold ~k (execute ~a ~clause))
+                                                  (fn [ys#] (concat xs# ys#))))))
+                          `(s/call ())
+                          clauses))))))
 
 (defmacro match [e & clauses]
   (letfn [(unbounds [pattern]
@@ -134,13 +145,18 @@
     [(lcons x xs') (lcons x zs')] (append xs' ys zs')))
 
 (defn member [x xs]
-  (match xs
-    (lcons x _) succeed
-    (lcons _ xs') (member x xs')))
+   (match xs
+     (lcons x _) succeed
+     (lcons _ xs') (member x xs')))
 
-(defn return [lvar]
-  (fn [a]
-    [(objectify lvar a)]))
+ (defn return [lvar]
+   (fn [a]
+     [(objectify lvar a)]))
 
-(defmacro run [& exprs]
-  `((reset ~@exprs) {}))
+ (defmacro run [& exprs]
+   `(s/run ((reset ~@exprs) {})))
+
+(first (run
+  (fresh [q]
+    (member 1 q)
+    (return q))))

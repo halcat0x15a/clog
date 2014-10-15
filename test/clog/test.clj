@@ -20,3 +20,32 @@
   (testing "construction"
     (is (= (:head (first (run (fresh [q] (l/member 'foo q) (return q)))))
            'foo))))
+
+(with-test
+  (defn sudoku [table]
+    (letfn [(every [f xs]
+              (if xs
+                (l/all (f (first xs)) (every f xs))
+                l/succeed))
+            (digits [xs]
+              (every #(l/member % (range 1 10)) xs))
+            (satisfy [p x]
+              (l/logic a (if (p (get a x)) [a])))]
+      (l/all (every digits table)
+             (every digits (apply map list table))
+             (every digits (map flatten (partition 3 (apply mapcat list (map (partial partition 3) table)))))
+             (every (partial satisfy (partial apply distinct?)) table))))
+  (let [table [[(l/lvar) (l/lvar) (l/lvar) 2 6 (l/lvar) 7 (l/lvar) 1]
+               [6 8 (l/lvar) (l/lvar) 7 (l/lvar) (l/lvar) 9 (l/lvar)]
+               [1 9 (l/lvar) (l/lvar) (l/lvar) 4 5 (l/lvar) (l/lvar)]
+               [8 2 (l/lvar) 1 (l/lvar) (l/lvar) (l/lvar) 4 (l/lvar)]
+               [(l/lvar) (l/lvar) 4 6 (l/lvar) 2 9 (l/lvar) (l/lvar)]
+               [(l/lvar) 5 (l/lvar) (l/lvar) (l/lvar) 3 (l/lvar) 2 8]
+               [(l/lvar) (l/lvar) 9 3 (l/lvar) (l/lvar) (l/lvar) 7 4]
+               [(l/lvar) 4 (l/lvar) (l/lvar) 5 (l/lvar) (l/lvar) 3 6]
+               [7 (l/lvar) 3 (l/lvar) 1 8 (l/lvar) (l/lvar) (l/lvar)]]]
+    (prn (time (run
+      (fresh [q]
+        (l/is q table)
+        (sudoku table)
+        (return q)))))))

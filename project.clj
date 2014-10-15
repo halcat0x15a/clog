@@ -5,4 +5,4 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [cont "0.2.2"]
-                 [unapply "0.2.0"]])
+                 [stackless "0.1.0"]])
