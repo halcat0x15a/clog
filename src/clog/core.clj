@@ -7,27 +7,30 @@
 (extend-protocol Term
   clojure.lang.ISeq
   (objectify [seq a]
-    (map #(objectify % a) seq))
+    (reduce (fn [s x] (map cons (objectify x a) s)) [()] (reverse seq)))
   clojure.lang.IPersistentVector
   (objectify [vec a]
-    (mapv #(objectify % a) vec))
+    (reduce (fn [v x] (map conj v (objectify x a))) [[]] vec))
   Object
-  (objectify [obj a] obj)
+  (objectify [obj a] [obj])
   nil
-  (objectify [_ a] nil))
+  (objectify [_ a] [nil]))
 
-(defrecord LVar [id]
+(defrecord LVar [id constraint]
   Term
   (objectify [this a]
     (if (contains? a this)
-      (objectify (get a this) a)
-      this)))
+      (mapcat #(if (constraint %) [%]) (objectify (get a this) a))
+      [this])))
 
 (defn lvar? [x]
   (instance? LVar x))
 
-(defn lvar [name]
-  (LVar. (gensym name)))
+(defrecord Truth []
+  clojure.lang.IFn
+  (invoke [f x] true))
+
+(def lvar (comp #(->LVar % (Truth.)) gensym))
 
 (defprotocol Seq
   (head [seq])
@@ -49,7 +52,7 @@
   (tail [lcons] tail)
   Term
   (objectify [this a]
-    (lcons (objectify head a) (objectify tail a))))
+    (map lcons (objectify head a) (objectify tail a))))
 
 (defn lcons? [x]
   (instance? LCons x))
@@ -138,9 +141,12 @@
     (lcons x _) succeed
     (lcons _ xs') (member x xs')))
 
+(defn pred [lvar p]
+  (is lvar (LVar. (gensym) p)))
+
 (defn return [lvar]
   (fn [a]
-    [(objectify lvar a)]))
+    (objectify lvar a)))
 
 (defmacro run [& exprs]
   `((reset ~@exprs) {}))
