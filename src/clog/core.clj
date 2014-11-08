@@ -16,7 +16,7 @@
   nil
   (objectify [_ a] nil))
 
-(defrecord LVar [id]
+(deftype LVar [id]
   Term
   (objectify [this a]
     (if (contains? a this)
@@ -26,8 +26,18 @@
 (defn lvar? [x]
   (instance? LVar x))
 
-(defn lvar [name]
-  (LVar. (gensym name)))
+(defn lvar
+  ([]
+     (LVar. (gensym)))
+  ([id]
+     (LVar. id)))
+
+(defmethod print-method LVar [^LVar lvar ^java.io.Writer w]
+  (.write w (str (.id lvar))))
+
+(defmacro fresh [syms & exprs]
+  `(let [~@(interleave syms (map (fn [sym] `(lvar (quote ~sym))) syms))]
+     ~@exprs))
 
 (defprotocol Seq
   (head [seq])
@@ -43,7 +53,7 @@
 
 (declare lcons)
 
-(defrecord LCons [head tail]
+(deftype LCons [head tail]
   Seq
   (head [lcons] head)
   (tail [lcons] tail)
@@ -55,12 +65,19 @@
   (instance? LCons x))
 
 (defn lcons [x xs]
-  (if (or (lvar? xs) (lcons? xs))
-    (LCons. x xs)
-    (cons x xs)))
+  (cond (or (lvar? xs) (lcons? xs)) (LCons. x xs)
+        (vector? xs) (into [x] xs)
+        (seq? xs) (cons x xs)))
 
-(derive clojure.lang.Sequential ::seq)
+(defmethod print-method LCons [^LCons lcons ^java.io.Writer w]
+  (.write w "(")
+  (print-method (.head lcons) w)
+  (.write w " . ")
+  (print-method (.tail lcons) w)
+  (.write w ")"))
+
 (derive LCons ::seq)
+(derive clojure.lang.Sequential ::seq)
 
 (defmulti unify (fn [x y a] [(type x) (type y)]))
 
@@ -80,8 +97,6 @@
     (unify obj (get a lvar) a)
     (assoc a lvar obj)))
 
-(prefer-method unify [LVar Object] [Object LVar])
-
 (defmethod unify [::seq ::seq] [xs ys a]
   (some->> a
            (unify (head xs) (head ys))
@@ -89,10 +104,6 @@
 
 (defmethod unify :default [x y a]
   (if (= x y) a))
-
-(defmacro fresh [syms & exprs]
-  `(let [~@(interleave syms (map (fn [sym] `(lvar (quote ~sym))) syms))]
-     ~@exprs))
 
 (defmacro logic [sym expr]
   `(shift k#
@@ -104,29 +115,36 @@
 (def fail (logic a nil))
 
 (defn is [x y]
-  (logic a (some->> a (unify x y) list)))
+  (logic a (some-> (unify x y a) list)))
 
-(defmacro execute [a & goals]
-  `((reset ~@goals list) ~a))
+(defn return [x]
+  (logic a [(objectify x a)]))
 
-(defmacro all [& clauses]
-  `(logic a# (execute a# ~@clauses)))
+(defmacro execute [a & exprs]
+  `((reset (let* [x# (do ~@exprs)] (fn* [_#] [x#]))) ~a))
 
-(defmacro any [& clauses]
+(defmacro run [& exprs]
+  `(execute {} ~@exprs))
+
+(defmacro all [& exprs]
+  `(logic a# (execute a# ~@exprs)))
+
+(defmacro any [& exprs]
   (let [k (gensym), a (gensym)]
     `(shift ~k
        (fn [~a]
-         (concat ~@(map (fn [clause] `(lazy-seq (mapcat #((~k %) %) (execute ~a ~clause)))) clauses))))))
+         (concat ~@(map (fn [e] `(lazy-seq (mapcat #((~k %) %) (execute ~a ~e)))) exprs))))))
 
-(defmacro match [e & clauses]
-  (letfn [(unbounds [pattern]
-            (cond (seq? pattern) (mapcat unbounds (next pattern))
-                  (vector? pattern) (mapcat unbounds pattern)
-                  (and (symbol? pattern) (not (contains? &env pattern))) [pattern]))]
-    `(any ~@(map (fn [[pattern result]]
-                   `(fresh [~@(unbounds pattern)]
-                      (all (is ~pattern ~e) ~result)))
-                 (partition 2 clauses)))))
+(defn- unbounds [env pattern]
+  (->> pattern
+       (tree-seq sequential? #(if (seq? %) (next %) %))
+       (filter #(and (symbol? %) (not (contains? env %))))))
+
+(defmacro match [expr & clauses]
+  `(any ~@(map (fn [[pattern result]]
+                 `(fresh [~@(unbounds &env pattern)]
+                    (all (is ~pattern ~expr) ~result)))
+               (partition 2 clauses))))
 
 (defn append [xs ys zs]
   (match [xs zs]
@@ -137,10 +155,3 @@
   (match xs
     (lcons x _) succeed
     (lcons _ xs') (member x xs')))
-
-(defn return [lvar]
-  (fn [a]
-    [(objectify lvar a)]))
-
-(defmacro run [& exprs]
-  `((reset ~@exprs) {}))

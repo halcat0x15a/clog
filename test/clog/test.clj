@@ -18,5 +18,5 @@
     (is (= (run (fresh [q] (l/member q ['foo 'bar 'baz]) (return q)))
            ['foo 'bar 'baz])))
   (testing "construction"
-    (is (= (:head (first (run (fresh [q] (l/member 'foo q) (return q)))))
+    (is (= (l/head (first (run (fresh [q] (l/member 'foo q) (return q)))))
            'foo))))
