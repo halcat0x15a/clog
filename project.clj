@@ -1,4 +1,4 @@
-(defproject clog "0.1.3"
+(defproject clog "0.2.0"
   :description "Clojure Programming in Logic"
   :url "https://github.com/halcat0x15a/clog"
   :license {:name "Eclipse Public License"

@@ -33,7 +33,7 @@
      (LVar. id)))
 
 (defmethod print-method LVar [^LVar lvar ^java.io.Writer w]
-  (.write w (str (.id lvar))))
+  (.write w (name (.id lvar))))
 
 (defmacro fresh [syms & exprs]
   `(let [~@(interleave syms (map (fn [sym] `(lvar (quote ~sym))) syms))]
@@ -65,9 +65,9 @@
   (instance? LCons x))
 
 (defn lcons [x xs]
-  (cond (or (lvar? xs) (lcons? xs)) (LCons. x xs)
-        (vector? xs) (into [x] xs)
-        (seq? xs) (cons x xs)))
+  (cond (vector? xs) (into [x] xs)
+        (seq? xs) (cons x xs)
+        :else (LCons. x xs)))
 
 (defmethod print-method LCons [^LCons lcons ^java.io.Writer w]
   (.write w "(")
@@ -86,32 +86,31 @@
     [(or (class x) ::nil) (or (class y) ::nil)]))
 
 (defmethod unify [LVar LVar] [x y a]
-  (cond (= x y) a
+  (cond (= x y) [a]
         (contains? a x) (unify (get a x) y a)
         (contains? a y) (unify x (get a y) a)
-        :else (assoc a x y)))
+        :else [(assoc a x y)]))
 
 (defmethod unify [LVar ::any] [lvar obj a]
   (if (contains? a lvar)
     (unify (get a lvar) obj a)
-    (assoc a lvar obj)))
+    [(assoc a lvar obj)]))
 
 (defmethod unify [::any LVar] [obj lvar a]
   (if (contains? a lvar)
     (unify obj (get a lvar) a)
-    (assoc a lvar obj)))
+    [(assoc a lvar obj)]))
 
 (defmethod unify [::seq ::seq] [xs ys a]
   (let [x (head xs)
         y (head ys)]
-    (cond (and x y) (some->> (unify x y a)
-                             (unify (tail xs) (tail ys)))
-          (= xs ys) a)))
+    (cond (and x y) (mapcat #(unify (tail xs) (tail ys) %) (unify x y a))
+          (= xs ys) [a])))
 
 (defmethod unify :default [x y a]
-  (if (= x y) a))
+  (if (= x y) [a]))
 
-(defn- bind [k xs]
+(defn bind [k xs]
   (mapcat #((k (second %)) (first %)) xs))
 
 (defmacro logic [sym expr]
@@ -124,7 +123,7 @@
 (def fail (logic a nil))
 
 (defn is [x y]
-  (logic a (if-let [a (unify x y a)] [[a a]])))
+  (logic a (map #(list % %) (unify x y a))))
 
 (defn return [x]
   (logic a [[a (objectify x a)]]))
