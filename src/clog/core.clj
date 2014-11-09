@@ -111,26 +111,29 @@
 (defmethod unify :default [x y a]
   (if (= x y) a))
 
+(defn- bind [k xs]
+  (mapcat #((k (second %)) (first %)) xs))
+
 (defmacro logic [sym expr]
   `(shift k#
      (fn [~sym]
-       (mapcat #((k# %) %) ~expr))))
+       (bind k# ~expr))))
 
-(def succeed (logic a [a]))
+(def succeed (logic a [[a a]]))
 
 (def fail (logic a nil))
 
 (defn is [x y]
-  (logic a (some-> (unify x y a) list)))
+  (logic a (if-let [a (unify x y a)] [[a a]])))
 
 (defn return [x]
-  (logic a [(objectify x a)]))
+  (logic a [[a (objectify x a)]]))
 
 (defmacro execute [a & exprs]
-  `((reset (let* [x# (do ~@exprs)] (fn* [_#] [x#]))) ~a))
+  `((reset (let* [x# (do ~@exprs)] (fn* [a#] [[a# x#]]))) ~a))
 
 (defmacro run [& exprs]
-  `(execute {} ~@exprs))
+  `(map second (execute {} ~@exprs)))
 
 (defmacro all [& exprs]
   `(logic a# (execute a# ~@exprs)))
@@ -140,7 +143,7 @@
         a (gensym)]
     `(shift ~k
        (fn [~a]
-         (concat ~@(map (fn [e] `(lazy-seq (mapcat #((~k %) %) (execute ~a ~e)))) exprs))))))
+         (lazy-cat ~@(map (fn [e] `(bind ~k (execute ~a ~e))) exprs))))))
 
 (defn- unbounds [env pattern]
   (->> pattern
