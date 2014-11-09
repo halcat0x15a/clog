@@ -78,8 +78,12 @@
 
 (derive LCons ::seq)
 (derive clojure.lang.Sequential ::seq)
+(derive Object ::any)
+(derive ::nil ::any)
 
-(defmulti unify (fn [x y a] [(type x) (type y)]))
+(defmulti unify
+  (fn [x y a]
+    [(or (class x) ::nil) (or (class y) ::nil)]))
 
 (defmethod unify [LVar LVar] [x y a]
   (cond (= x y) a
@@ -87,12 +91,12 @@
         (contains? a y) (unify x (get a y) a)
         :else (assoc a x y)))
 
-(defmethod unify [LVar Object] [lvar obj a]
+(defmethod unify [LVar ::any] [lvar obj a]
   (if (contains? a lvar)
     (unify (get a lvar) obj a)
     (assoc a lvar obj)))
 
-(defmethod unify [Object LVar] [obj lvar a]
+(defmethod unify [::any LVar] [obj lvar a]
   (if (contains? a lvar)
     (unify obj (get a lvar) a)
     (assoc a lvar obj)))
