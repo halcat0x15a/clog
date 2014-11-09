@@ -102,9 +102,11 @@
     (assoc a lvar obj)))
 
 (defmethod unify [::seq ::seq] [xs ys a]
-  (some->> a
-           (unify (head xs) (head ys))
-           (unify (tail xs) (tail ys))))
+  (let [x (head xs)
+        y (head ys)]
+    (cond (and x y) (some->> (unify x y a)
+                             (unify (tail xs) (tail ys)))
+          (= xs ys) a)))
 
 (defmethod unify :default [x y a]
   (if (= x y) a))
@@ -134,7 +136,8 @@
   `(logic a# (execute a# ~@exprs)))
 
 (defmacro any [& exprs]
-  (let [k (gensym), a (gensym)]
+  (let [k (gensym)
+        a (gensym)]
     `(shift ~k
        (fn [~a]
          (concat ~@(map (fn [e] `(lazy-seq (mapcat #((~k %) %) (execute ~a ~e)))) exprs))))))
